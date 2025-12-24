@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-export type TabType = 'menu' | 'stock' | 'reports' | 'settings';
+export type TabType = 'menu' | 'stock' | 'reports' | 'settings' | 'history';
 
 interface TabNavigationProps {
   activeTab: TabType;
@@ -11,6 +11,7 @@ const tabs: { id: TabType; label: string }[] = [
   { id: 'menu', label: 'MENU' },
   { id: 'stock', label: 'STOCK' },
   { id: 'reports', label: 'REPORTS' },
+  { id: 'history', label: 'HISTORY' },
   { id: 'settings', label: 'SETTINGS' },
 ];
 
