@@ -55,22 +55,21 @@ const Index = () => {
   return (
     <>
       <Helmet>
-        <title>Newsiri Trade Center - POS System</title>
-        <meta name="description" content="Point of Sale system for Newsiri Trade Center - Manage billing, stock, and reports efficiently" />
+        <title>Newsari Trade Center - POS System</title>
+        <meta name="description" content="Point of Sale system for Newsari Trade Center - Manage billing, stock, and reports efficiently" />
       </Helmet>
-      
+
       <div className="flex flex-col h-screen bg-background">
-        <Header 
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
-        />
-        
-        <TabNavigation 
+        {/* Shop Name Header - Replaces old header search */}
+        <div className="bg-card border-b border-border px-6 py-4">
+          <h1 className="text-2xl font-bold text-foreground">Newsiri Trade Center</h1>
+        </div>
+
+        <TabNavigation
           activeTab={activeTab}
           onTabChange={setActiveTab}
         />
-        
+
         <main className="flex-1 overflow-hidden relative">
           {renderTabContent()}
         </main>
