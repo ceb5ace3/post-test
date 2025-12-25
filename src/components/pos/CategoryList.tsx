@@ -9,11 +9,11 @@ interface CategoryListProps {
   onItemSelect: (item: MenuItem) => void;
 }
 
-export function CategoryList({ 
-  categories, 
-  selectedCategory, 
-  onCategorySelect, 
-  onItemSelect 
+export function CategoryList({
+  categories,
+  selectedCategory,
+  onCategorySelect,
+  onItemSelect
 }: CategoryListProps) {
   return (
     <div className="flex-1 overflow-auto">
@@ -36,7 +36,7 @@ export function CategoryList({
             </div>
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
-          
+
           {selectedCategory === category.id && (
             <div className="bg-secondary/20 animate-slide-in">
               {category.items.map((item) => (

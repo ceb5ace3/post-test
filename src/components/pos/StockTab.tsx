@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, AlertTriangle, Scan } from 'lucide-react';
+import { Plus, Edit, AlertTriangle, Scan, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { BarcodeScanner } from './BarcodeScanner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface StockItem {
   id: string;
@@ -27,30 +28,84 @@ interface StockTabProps {
   searchQuery: string;
 }
 
+const PREDEFINED_CATEGORIES = [
+  'Food & Beverages',
+  'Electronics',
+  'Clothing',
+  'Home & Garden',
+  'Health & Beauty',
+  'Sports & Outdoors',
+  'Books & Media',
+  'Toys & Games',
+  'Office Supplies',
+  'Automotive',
+  'Other'
+];
+
 export function StockTab({ searchQuery }: StockTabProps) {
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingItem, setEditingItem] = useState<StockItem | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
   const { canManageStock } = useAuth();
 
-  // Form state
+  // Helper function to get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
   const [formData, setFormData] = useState({
     name: '',
     barcode: '',
     current_stock: 0,
     retail_price: 0,
-    unit_cost: 0,
     low_stock_alert: 10,
-    received_date: '',
+    received_date: getTodayDate(),
     expiry_date: '',
     category: '',
   });
 
   useEffect(() => {
     fetchStockItems();
+    loadCustomCategories();
   }, []);
+
+  const loadCustomCategories = () => {
+    const saved = localStorage.getItem('custom_categories');
+    if (saved) {
+      setCustomCategories(JSON.parse(saved));
+    }
+  };
+
+  const saveCustomCategory = (category: string) => {
+    const updated = [...customCategories, category];
+    setCustomCategories(updated);
+    localStorage.setItem('custom_categories', JSON.stringify(updated));
+  };
+
+  const handleAddNewCategory = () => {
+    if (newCategoryName.trim()) {
+      const trimmedName = newCategoryName.trim();
+      const allCategories = [...PREDEFINED_CATEGORIES, ...customCategories];
+
+      if (allCategories.includes(trimmedName)) {
+        toast.error('Category already exists');
+        return;
+      }
+
+      saveCustomCategory(trimmedName);
+      setFormData(prev => ({ ...prev, category: trimmedName }));
+      setNewCategoryName('');
+      setShowNewCategoryInput(false);
+      toast.success('Category added successfully');
+    }
+  };
 
   const fetchStockItems = async () => {
     setLoading(true);
@@ -69,8 +124,8 @@ export function StockTab({ searchQuery }: StockTabProps) {
   };
 
   const filteredItems = stockItems.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.barcode?.includes(searchQuery)
+    item.name.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
+    item.barcode?.includes(localSearchQuery)
   );
 
   const getStockStatus = (current: number, alert: number) => {
@@ -80,16 +135,21 @@ export function StockTab({ searchQuery }: StockTabProps) {
   };
 
   const handleAddItem = async () => {
+    if (!formData.name || !formData.category) {
+      toast.error('Please fill in item name and category');
+      return;
+    }
+
     const { error } = await supabase.from('stock_items').insert({
       name: formData.name,
       barcode: formData.barcode || null,
       current_stock: formData.current_stock,
       retail_price: formData.retail_price,
-      unit_cost: formData.unit_cost,
+      unit_cost: 0,
       low_stock_alert: formData.low_stock_alert,
       received_date: formData.received_date || null,
       expiry_date: formData.expiry_date || null,
-      category: formData.category || null,
+      category: formData.category,
     });
 
     if (error) {
@@ -106,6 +166,11 @@ export function StockTab({ searchQuery }: StockTabProps) {
   const handleUpdateItem = async () => {
     if (!editingItem) return;
 
+    if (!formData.name || !formData.category) {
+      toast.error('Please fill in item name and category');
+      return;
+    }
+
     const { error } = await supabase
       .from('stock_items')
       .update({
@@ -113,11 +178,10 @@ export function StockTab({ searchQuery }: StockTabProps) {
         barcode: formData.barcode || null,
         current_stock: formData.current_stock,
         retail_price: formData.retail_price,
-        unit_cost: formData.unit_cost,
         low_stock_alert: formData.low_stock_alert,
         received_date: formData.received_date || null,
         expiry_date: formData.expiry_date || null,
-        category: formData.category || null,
+        category: formData.category,
       })
       .eq('id', editingItem.id);
 
@@ -132,18 +196,38 @@ export function StockTab({ searchQuery }: StockTabProps) {
     }
   };
 
+  const handleDeleteItem = async (itemId: string, itemName: string) => {
+    if (!confirm(`Are you sure you want to delete "${itemName}"?`)) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('stock_items')
+      .delete()
+      .eq('id', itemId);
+
+    if (error) {
+      console.error('Error deleting item:', error);
+      toast.error('Failed to delete item');
+    } else {
+      toast.success('Item deleted successfully');
+      fetchStockItems();
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       name: '',
       barcode: '',
       current_stock: 0,
       retail_price: 0,
-      unit_cost: 0,
       low_stock_alert: 10,
-      received_date: '',
+      received_date: getTodayDate(),
       expiry_date: '',
       category: '',
     });
+    setShowNewCategoryInput(false);
+    setNewCategoryName('');
   };
 
   const openEditDialog = (item: StockItem) => {
@@ -152,7 +236,6 @@ export function StockTab({ searchQuery }: StockTabProps) {
       barcode: item.barcode || '',
       current_stock: item.current_stock,
       retail_price: item.retail_price,
-      unit_cost: item.unit_cost,
       low_stock_alert: item.low_stock_alert,
       received_date: item.received_date || '',
       expiry_date: item.expiry_date || '',
@@ -177,21 +260,33 @@ export function StockTab({ searchQuery }: StockTabProps) {
 
   return (
     <div className="p-6 bg-background min-h-full">
+      <div className="mb-6 flex items-center justify-between">
+        <div className="relative w-96">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input
+            type="text"
+            placeholder="Search stock items..."
+            value={localSearchQuery}
+            onChange={(e) => setLocalSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+      </div>
+
       <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
-        {/* Table Header */}
         <div className="pos-table-header">
-          <div className="grid grid-cols-8 gap-4 px-4 py-3 text-sm font-medium text-muted-foreground">
+          <div className="grid grid-cols-9 gap-4 px-4 py-3 text-sm font-medium text-muted-foreground">
             <span className="col-span-2">Item Name</span>
             <span className="text-center">Current Stock</span>
             <span className="text-center">Retail Price</span>
-            <span className="text-center">Unit Cost</span>
+            <span className="text-center">Category</span>
             <span className="text-center">Low Stock Alert</span>
+            <span className="text-center">Received Date</span>
             <span className="text-center">Expiry Date</span>
             <span className="text-center">Actions</span>
           </div>
         </div>
 
-        {/* Table Body */}
         <div className="divide-y divide-border">
           {filteredItems.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
@@ -201,9 +296,9 @@ export function StockTab({ searchQuery }: StockTabProps) {
             filteredItems.map((item) => {
               const status = getStockStatus(item.current_stock, item.low_stock_alert);
               return (
-                <div 
-                  key={item.id} 
-                  className="grid grid-cols-8 gap-4 px-4 py-3 items-center hover:bg-table-hover transition-colors"
+                <div
+                  key={item.id}
+                  className="grid grid-cols-9 gap-4 px-4 py-3 items-center hover:bg-table-hover transition-colors"
                 >
                   <span className={cn(
                     "col-span-2 font-medium",
@@ -223,18 +318,29 @@ export function StockTab({ searchQuery }: StockTabProps) {
                     {item.current_stock} units
                   </span>
                   <span className="text-center">Rs. {Number(item.retail_price).toLocaleString()}</span>
-                  <span className="text-center">Rs. {Number(item.unit_cost).toLocaleString()}</span>
+                  <span className="text-center text-sm">{item.category || '-'}</span>
                   <span className="text-center">{item.low_stock_alert}</span>
+                  <span className="text-center text-sm">{item.received_date || '-'}</span>
                   <span className="text-center text-sm">{item.expiry_date || '-'}</span>
-                  <div className="flex justify-center">
+                  <div className="flex justify-center gap-2">
                     {canManageStock && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEditDialog(item)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditDialog(item)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteItem(item.id, item.name)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -244,10 +350,9 @@ export function StockTab({ searchQuery }: StockTabProps) {
         </div>
       </div>
 
-      {/* Action Buttons */}
       {canManageStock && (
         <div className="flex gap-4 mt-6">
-          <Button 
+          <Button
             onClick={() => setShowAddDialog(true)}
             className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
@@ -272,82 +377,128 @@ export function StockTab({ searchQuery }: StockTabProps) {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="itemName">Item Name</Label>
-                <Input 
-                  id="itemName" 
+                <Label htmlFor="itemName">Item Name *</Label>
+                <Input
+                  id="itemName"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Enter item name" 
+                  placeholder="Enter item name"
                 />
               </div>
               <div>
-                <Label htmlFor="barcode">Barcode</Label>
-                <div className="flex gap-2">
-                  <Input 
-                    id="barcode" 
-                    value={formData.barcode}
-                    onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
-                    placeholder="Scan or enter" 
-                  />
-                  <Button size="icon" variant="outline" onClick={() => setShowScanner(true)}>
-                    <Scan className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Label htmlFor="category">Category *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => {
+                    if (value === '__new__') {
+                      setShowNewCategoryInput(true);
+                    } else {
+                      setFormData(prev => ({ ...prev, category: value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PREDEFINED_CATEGORIES.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                    {customCategories.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary font-medium">
+                      + Add New Category
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {showNewCategoryInput && (
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      placeholder="New category name"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleAddNewCategory();
+                        }
+                      }}
+                    />
+                    <Button size="sm" onClick={handleAddNewCategory}>
+                      Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowNewCategoryInput(false);
+                        setNewCategoryName('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="barcode">Barcode</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="barcode"
+                  value={formData.barcode}
+                  onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
+                  placeholder="Scan or enter"
+                />
+                <Button size="icon" variant="outline" onClick={() => setShowScanner(true)}>
+                  <Scan className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="stock">Initial Stock</Label>
-                <Input 
-                  id="stock" 
-                  type="number" 
+                <Input
+                  id="stock"
+                  type="number"
                   value={formData.current_stock}
                   onChange={(e) => setFormData(prev => ({ ...prev, current_stock: Number(e.target.value) }))}
                 />
               </div>
               <div>
                 <Label htmlFor="retailPrice">Retail Price</Label>
-                <Input 
-                  id="retailPrice" 
-                  type="number" 
+                <Input
+                  id="retailPrice"
+                  type="number"
                   value={formData.retail_price}
                   onChange={(e) => setFormData(prev => ({ ...prev, retail_price: Number(e.target.value) }))}
-                />
-              </div>
-              <div>
-                <Label htmlFor="unitCost">Unit Cost</Label>
-                <Input 
-                  id="unitCost" 
-                  type="number" 
-                  value={formData.unit_cost}
-                  onChange={(e) => setFormData(prev => ({ ...prev, unit_cost: Number(e.target.value) }))}
                 />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="lowAlert">Low Stock Alert</Label>
-                <Input 
-                  id="lowAlert" 
-                  type="number" 
+                <Input
+                  id="lowAlert"
+                  type="number"
                   value={formData.low_stock_alert}
                   onChange={(e) => setFormData(prev => ({ ...prev, low_stock_alert: Number(e.target.value) }))}
                 />
               </div>
               <div>
                 <Label htmlFor="receivedDate">Received Date</Label>
-                <Input 
-                  id="receivedDate" 
-                  type="date" 
+                <Input
+                  id="receivedDate"
+                  type="date"
                   value={formData.received_date}
                   onChange={(e) => setFormData(prev => ({ ...prev, received_date: e.target.value }))}
                 />
               </div>
               <div>
-                <Label htmlFor="expiryDate">Expiry Date</Label>
-                <Input 
-                  id="expiryDate" 
-                  type="date" 
+                <Label htmlFor="expiryDate">Expiry Date (Optional)</Label>
+                <Input
+                  id="expiryDate"
+                  type="date"
                   value={formData.expiry_date}
                   onChange={(e) => setFormData(prev => ({ ...prev, expiry_date: e.target.value }))}
                 />
@@ -370,48 +521,94 @@ export function StockTab({ searchQuery }: StockTabProps) {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="editName">Item Name</Label>
-                <Input 
-                  id="editName" 
+                <Label htmlFor="editName">Item Name *</Label>
+                <Input
+                  id="editName"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                 />
               </div>
               <div>
-                <Label htmlFor="editBarcode">Barcode</Label>
-                <Input 
-                  id="editBarcode" 
-                  value={formData.barcode}
-                  onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
-                />
+                <Label htmlFor="editCategory">Category *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => {
+                    if (value === '__new__') {
+                      setShowNewCategoryInput(true);
+                    } else {
+                      setFormData(prev => ({ ...prev, category: value }));
+                    }
+                  }}
+                >
+                  <SelectTrigger id="editCategory">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PREDEFINED_CATEGORIES.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                    {customCategories.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                    <SelectItem value="__new__" className="text-primary font-medium">
+                      + Add New Category
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {showNewCategoryInput && (
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      placeholder="New category name"
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleAddNewCategory();
+                        }
+                      }}
+                    />
+                    <Button size="sm" onClick={handleAddNewCategory}>
+                      Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setShowNewCategoryInput(false);
+                        setNewCategoryName('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="editBarcode">Barcode</Label>
+              <Input
+                id="editBarcode"
+                value={formData.barcode}
+                onChange={(e) => setFormData(prev => ({ ...prev, barcode: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="editStock">Current Stock</Label>
-                <Input 
-                  id="editStock" 
-                  type="number" 
+                <Input
+                  id="editStock"
+                  type="number"
                   value={formData.current_stock}
                   onChange={(e) => setFormData(prev => ({ ...prev, current_stock: Number(e.target.value) }))}
                 />
               </div>
               <div>
                 <Label htmlFor="editRetail">Retail Price</Label>
-                <Input 
-                  id="editRetail" 
-                  type="number" 
+                <Input
+                  id="editRetail"
+                  type="number"
                   value={formData.retail_price}
                   onChange={(e) => setFormData(prev => ({ ...prev, retail_price: Number(e.target.value) }))}
-                />
-              </div>
-              <div>
-                <Label htmlFor="editCost">Unit Cost</Label>
-                <Input 
-                  id="editCost" 
-                  type="number" 
-                  value={formData.unit_cost}
-                  onChange={(e) => setFormData(prev => ({ ...prev, unit_cost: Number(e.target.value) }))}
                 />
               </div>
             </div>

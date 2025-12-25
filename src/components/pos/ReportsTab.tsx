@@ -137,12 +137,14 @@ export function ReportsTab() {
     const sixtyDaysAgo = new Date(today);
     sixtyDaysAgo.setDate(today.getDate() - 60);
 
+    // Current period (last 30 days)
     const { data: currentPeriod } = await supabase
       .from('bills')
       .select('total')
       .eq('status', 'completed')
       .gte('created_at', thirtyDaysAgo.toISOString());
 
+    // Previous period (30-60 days ago)
     const { data: previousPeriod } = await supabase
       .from('bills')
       .select('total')
@@ -195,6 +197,7 @@ export function ReportsTab() {
   return (
     <div className="p-6 bg-background min-h-full">
       <div className="grid grid-cols-3 gap-6 mb-6">
+        {/* Chart Cards */}
         <div className="col-span-2 bg-card rounded-lg border border-border p-4">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-semibold text-foreground uppercase">
@@ -242,6 +245,7 @@ export function ReportsTab() {
           </div>
         </div>
 
+        {/* Stats Cards */}
         <div className="space-y-4">
           <div className="bg-card rounded-lg border border-border p-4">
             <p className="text-sm text-muted-foreground uppercase">Total Revenue</p>
@@ -282,6 +286,7 @@ export function ReportsTab() {
         </div>
       </div>
 
+      {/* Secondary Charts */}
       <div className="grid grid-cols-2 gap-6 mb-6">
         <div className="bg-card rounded-lg border border-border p-4">
           <h3 className="font-semibold text-foreground uppercase mb-4">Weekly Comparison</h3>
@@ -339,6 +344,7 @@ export function ReportsTab() {
         </div>
       </div>
 
+      {/* Report Type Selector */}
       <div className="flex gap-3">
         {(['daily', 'weekly', 'monthly'] as ReportType[]).map((type) => (
           <Button
