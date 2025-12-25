@@ -1,3 +1,4 @@
+import { RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -10,6 +11,7 @@ interface BillingSummaryProps {
   onPaymentClick: () => void;
   onDiscountClick: () => void;
   onRefundClick: () => void;
+  customerNameInputRef?: RefObject<HTMLInputElement>;
 }
 
 export function BillingSummary({
@@ -21,6 +23,7 @@ export function BillingSummary({
   onPaymentClick,
   onDiscountClick,
   onRefundClick,
+  customerNameInputRef,
 }: BillingSummaryProps) {
   return (
     <div className="bg-card border-l border-border flex flex-col h-full">
@@ -75,6 +78,7 @@ export function BillingSummary({
             CUSTOMER INFO
           </Button>
           <Input
+            ref={customerNameInputRef}
             type="text"
             placeholder="Customer Name (Optional)"
             value={customerName}
